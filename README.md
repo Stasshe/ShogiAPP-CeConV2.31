@@ -1,3 +1,3 @@
 #Only Playgrounds on iPad
 
-# -CeConV2.31
+# 将棋-CeConV2.31
