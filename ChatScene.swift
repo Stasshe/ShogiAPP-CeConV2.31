@@ -1,3 +1,111 @@
+import SpriteKit
+import Foundation
+import SpriteKit
+import UIKit
+
+class ChatScene: SKScene {
+    var updateInterval: TimeInterval = 3
+    var lastUpdateTime: TimeInterval = 0
+    
+    // テキストデータを配列で保持
+    var chatMessages: [ChatMessage] = [
+        ChatMessage(message: "hello", name: "A", timestamp: 0),
+        ChatMessage(message: "hello", name: "B", timestamp: 0)
+    ]
+    
+    private lazy var scrollView: UIScrollView = {
+        let scrollView = UIScrollView(frame: frame)
+        scrollView.contentSize = CGSize(width: frame.width, height: CGFloat.greatestFiniteMagnitude)
+        return scrollView
+    }()
+    
+    
+    func updateChat(){
+        // UIScrollView に UILabel を追加
+        for (index, message) in chatMessages.enumerated() {
+            let label = UILabel(frame: CGRect(x: 0, y: CGFloat(index) * 20, width: scrollView.frame.width, height: 20))
+            label.text = message.message
+            scrollView.addSubview(label)
+        }
+    }
+    override func didMove(to view: SKView) {
+        super.didMove(to: view)
+        // UIView を SKView に追加
+        view.addSubview(scrollView)
+        // Auto Layout を有効にする
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        
+        // 制約を設定
+        NSLayoutConstraint.activate([
+            scrollView.topAnchor.constraint(equalTo: view.topAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+    }
+    
+    override func update(_ currentTime: TimeInterval) {
+        if currentTime - lastUpdateTime > updateInterval {
+            lastUpdateTime = currentTime
+            fetchNewChatMessages { newMessages in
+                // newMessages には新しいメッセージのみが入っているので、好きなように処理できます。
+                for message in newMessages {
+                    let N: [ChatMessage] = [ChatMessage(message: message.message, name: message.name, timestamp: 0)]
+                    self.chatMessages.append(contentsOf: N)
+                    self.updateChat()
+                    print("新しいメッセージ: \(message.message) - \(message.name)")
+                }
+            }
+        }
+    }
+    
+    
+    struct ChatMessage: Codable, Hashable {
+        let message: String
+        let name: String
+        let timestamp: Double
+    }
+    
+    var previousChatMessages: Set<ChatMessage> = []
+    func fetchNewChatMessages(completion: @escaping ([ChatMessage]) -> Void) {
+        let urlString = "\(endpoint)/chat.json"
+        guard let url = URL(string: urlString) else {
+            return
+        }
+        let task = URLSession.shared.dataTask(with: url) { [self] data, response, error in
+            guard let data = data, error == nil else {
+                return
+            }
+            
+            let decoder = JSONDecoder()
+            do {
+                let jsonDictionary = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
+                var newChatMessages: [ChatMessage] = []
+                for (_, value) in jsonDictionary ?? [:] {
+                    if let chatMessageData = try? JSONSerialization.data(withJSONObject: value, options: []),
+                       let chatMessage = try? decoder.decode(ChatMessage.self, from: chatMessageData) {
+                        newChatMessages.append(chatMessage)
+                    }
+                }
+                // 新しいメッセージを抽出
+                let newMessages = newChatMessages.filter { newMessage in
+                    !previousChatMessages.contains(where: { $0.message == newMessage.message && $0.timestamp == newMessage.timestamp })
+                }
+                previousChatMessages.formUnion(newMessages)
+                DispatchQueue.main.async {
+                    let sortedNewMessages = newMessages.sorted { $0.timestamp < $1.timestamp }
+                    completion(sortedNewMessages)
+                }
+            } catch {
+                print("Error decoding JSON: \(error.localizedDescription)")
+            }
+        }
+        task.resume()
+    }
+
+}
+
+
 /*
 import SpriteKit
 
